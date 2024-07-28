@@ -35,7 +35,8 @@ header {
     position: relative;
 }
 
-#upload-btn {
+#upload-btn,
+#connect-wallet-btn {
     background-color: #6200ea;
     color: white;
     border: none;
@@ -44,12 +45,20 @@ header {
     cursor: pointer;
     transition: background-color 0.3s;
     position: absolute;
-    right: 20px;
     top: 50%;
     transform: translateY(-50%);
 }
 
-#upload-btn:hover {
+#upload-btn {
+    right: 120px;
+}
+
+#connect-wallet-btn {
+    right: 20px;
+}
+
+#upload-btn:hover,
+#connect-wallet-btn:hover {
     background-color: #3700b3;
 }
 
@@ -94,14 +103,6 @@ main {
     padding: 0;
 }
 
-.audio-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 10px;
-    border-bottom### Updated `styles.css` (continued)
-
-```css
 .audio-item {
     display: flex;
     justify-content: space-between;
