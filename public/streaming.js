@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let broadcastStream;
     let audioContext, sourceNode;
     let currentBroadcast;
+    let audioQueue = [];
 
     audioSourceSelect.addEventListener('change', () => {
         if (audioSourceSelect.value === 'file') {
@@ -43,6 +44,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 sourceNode.connect(destination);
                 startBroadcast(destination.stream, broadcastName);
                 audio.play();
+            } else {
+                alert('Please select a file to broadcast.');
             }
         }
     });
@@ -103,20 +106,32 @@ document.addEventListener('DOMContentLoaded', function() {
 
     socket.on('audio-stream', (data) => {
         const audioBlob = new Blob([data], { type: 'audio/webm' });
-        const audioUrl = URL.createObjectURL(audioBlob);
-        listenerAudio.src = audioUrl;
-        listenerAudio.play().catch(error => {
-            console.error('Error playing audio:', error);
-        });
+        audioQueue.push(audioBlob);
+        playNextInQueue();
     });
+
+    function playNextInQueue() {
+        if (listenerAudio.paused && audioQueue.length > 0) {
+            const audioBlob = audioQueue.shift();
+            const audioUrl = URL.createObjectURL(audioBlob);
+            listenerAudio.src = audioUrl;
+            listenerAudio.play().catch(error => {
+                console.error('Error playing audio:', error);
+            });
+        }
+    }
+
+    listenerAudio.addEventListener('ended', playNextInQueue);
 
     socket.on('broadcast-ended', (broadcastName) => {
         if (listenBtn.dataset.broadcast === broadcastName) {
             listenBtn.style.display = 'none';
             listenerAudio.pause();
             listenerAudio.src = '';
+            audioQueue = [];
             alert(`Broadcast "${broadcastName}" has ended.`);
         }
     });
 
     socket.emit('get-broadcast-list');
+});

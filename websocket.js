@@ -7,21 +7,22 @@ module.exports = function (server) {
     io.on('connection', (socket) => {
         console.log('New client connected');
 
+        // Send the current broadcast list to the new client
+        socket.emit('broadcast-list', Object.keys(broadcasts));
+
         socket.on('new-broadcast', (broadcastName) => {
             broadcasts[broadcastName] = socket.id;
-            io.emit('broadcast-list', Object.keys(broadcasts));
+            io.emit('broadcast-list', Object.keys(broadcasts)); // Update all clients
         });
 
         socket.on('end-broadcast', (broadcastName) => {
             delete broadcasts[broadcastName];
-            io.emit('broadcast-list', Object.keys(broadcasts));
+            io.emit('broadcast-list', Object.keys(broadcasts)); // Update all clients
             io.emit('broadcast-ended', broadcastName);
         });
 
         socket.on('audio-stream', ({ name, data }) => {
-            if (broadcasts[name]) {
-                io.to(broadcasts[name]).emit('audio-stream', data);
-            }
+            socket.broadcast.emit('audio-stream', data);
         });
 
         socket.on('join-broadcast', (broadcastName) => {
@@ -33,7 +34,7 @@ module.exports = function (server) {
             for (const [name, id] of Object.entries(broadcasts)) {
                 if (id === socket.id) {
                     delete broadcasts[name];
-                    io.emit('broadcast-list', Object.keys(broadcasts));
+                    io.emit('broadcast-list', Object.keys(broadcasts)); // Update all clients
                     io.emit('broadcast-ended', name);
                 }
             }
