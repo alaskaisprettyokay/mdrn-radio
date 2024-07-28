@@ -3,16 +3,14 @@
   "version": "1.0.0",
   "main": "app.js",
   "scripts": {
-    "start": "node app.js",
-    "build": "echo 'Nothing to build'"
+    "start": "node app.js"
   },
   "dependencies": {
-    "@google-cloud/storage": "^5.8.5",
     "axios": "^0.21.1",
     "body-parser": "^1.19.0",
     "ejs": "^3.1.6",
     "express": "^4.17.1",
     "multer": "^1.4.2",
-    "serverless-http": "^3.2.0"
+    "@google-cloud/storage": "^5.8.5"
   }
 }
