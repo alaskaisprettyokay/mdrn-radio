@@ -1,6 +1,6 @@
 const socketIo = require('socket.io');
 
-module.exports = (server) => {
+module.exports = function (server) {
     const io = socketIo(server);
 
     io.on('connection', (socket) => {
