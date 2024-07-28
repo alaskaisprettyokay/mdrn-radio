@@ -5,7 +5,6 @@ const bodyParser = require('body-parser');
 const multer = require('multer');
 const fs = require('fs');
 const { Storage } = require('@google-cloud/storage');
-const axios = require('axios');
 const cors = require('cors');
 
 const app = express();
@@ -82,47 +81,21 @@ async function savePlayCounts() {
     }
 }
 
-app.get('/audio/:filename', async (req, res) => {
+app.get('/audio/:filename', (req, res) => {
     const { filename } = req.params;
-    const fileUrl = `https://storage.googleapis.com/${bucketName}/${filename}`;
-    const fileExt = path.extname(filename).toLowerCase();
-    const mimeTypes = {
-        '.mp3': 'audio/mpeg',
-        '.wav': 'audio/wav',
-        '.flac': 'audio/flac',
-    };
+    const file = storage.bucket(bucketName).file(filename);
+    
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Transfer-Encoding', 'chunked');
+    
+    const readStream = file.createReadStream();
 
-    try {
-        const response = await axios({
-            url: fileUrl,
-            method: 'GET',
-            responseType: 'stream'
-        });
+    readStream.on('error', (err) => {
+        console.error('Error streaming audio file:', err);
+        res.status(500).send('Error streaming audio file');
+    });
 
-        res.setHeader('Content-Type', mimeTypes[fileExt] || 'application/octet-stream');
-        res.setHeader('Transfer-Encoding', 'chunked');
-
-        response.data.on('data', (chunk) => {
-            if (chunk.length > 64 * 1024) {
-                let offset = 0;
-                while (offset < chunk.length) {
-                    const size = Math.min(64 * 1024, chunk.length - offset);
-                    res.write(chunk.slice(offset, offset + size));
-                    offset += size;
-                }
-            } else {
-                res.write(chunk);
-            }
-        });
-
-        response.data.on('end', () => {
-            res.end();
-        });
-
-    } catch (error) {
-        console.error('Error fetching audio file:', error);
-        res.status(500).send('Error fetching audio file');
-    }
+    readStream.pipe(res);
 });
 
 app.post('/play/:filename', async (req, res) => {
