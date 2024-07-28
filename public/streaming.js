@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let audioContext, sourceNode;
     let currentBroadcast;
     let audioQueue = [];
+    let isListening = false; // Flag to control playback
 
     audioSourceSelect.addEventListener('change', () => {
         if (audioSourceSelect.value === 'file') {
@@ -101,6 +102,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const broadcastName = listenBtn.dataset.broadcast;
         if (broadcastName) {
             socket.emit('join-broadcast', broadcastName);
+            isListening = true; // Set the flag to true when listening starts
         }
     });
 
@@ -111,7 +113,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     function playNextInQueue() {
-        if (listenerAudio.paused && audioQueue.length > 0) {
+        if (isListening && listenerAudio.paused && audioQueue.length > 0) {
             const audioBlob = audioQueue.shift();
             const audioUrl = URL.createObjectURL(audioBlob);
             listenerAudio.src = audioUrl;
@@ -129,6 +131,7 @@ document.addEventListener('DOMContentLoaded', function() {
             listenerAudio.pause();
             listenerAudio.src = '';
             audioQueue = [];
+            isListening = false; // Set the flag to false when the broadcast ends
             alert(`Broadcast "${broadcastName}" has ended.`);
         }
     });
