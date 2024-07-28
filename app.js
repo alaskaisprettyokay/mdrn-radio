@@ -12,6 +12,9 @@ const app = express();
 if (!process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
     throw new Error("GOOGLE_APPLICATION_CREDENTIALS_BASE64 is not set");
 }
+if (!process.env.BUCKET_NAME) {
+    throw new Error("BUCKET_NAME is not set");
+}
 
 const serviceAccountBase64 = process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64;
 const serviceAccount = Buffer.from(serviceAccountBase64, 'base64');
@@ -23,8 +26,8 @@ const keyFilePath = path.join('/tmp', 'service-account-key.json');
 fs.writeFileSync(keyFilePath, serviceAccount);
 process.env.GOOGLE_APPLICATION_CREDENTIALS = keyFilePath;
 
+const bucketName = process.env.BUCKET_NAME;
 const storage = new Storage();
-const bucketName = 'mdrn-zuvillage-test';
 const playCountsFile = 'playcounts.json';
 let audioFiles = [];
 let playCounts = {};
@@ -90,12 +93,19 @@ app.get('/audio/:filename', (req, res) => {
     
     const readStream = file.createReadStream();
 
+    readStream.on('data', (chunk) => {
+        console.log('Sending chunk of size:', chunk.length);
+        res.write(chunk);
+    });
+
+    readStream.on('end', () => {
+        res.end();
+    });
+
     readStream.on('error', (err) => {
         console.error('Error streaming audio file:', err);
         res.status(500).send('Error streaming audio file');
     });
-
-    readStream.pipe(res);
 });
 
 app.post('/play/:filename', async (req, res) => {
