@@ -3,34 +3,18 @@ const express = require('express');
 const path = require('path');
 const bodyParser = require('body-parser');
 const multer = require('multer');
-const fs = require('fs');
-const { Storage } = require('@google-cloud/storage');
 const cors = require('cors');
+const http = require('http');
+const { Storage } = require('@google-cloud/storage');
+
+const { listFiles, loadPlayCounts, savePlayCounts, getPlayCounts, incrementPlayCount } = require('./audio');
+const { bucketName } = require('./config');
+const setupWebSocket = require('./websocket');
 
 const app = express();
+const server = http.createServer(app);
 
-if (!process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
-    throw new Error("GOOGLE_APPLICATION_CREDENTIALS_BASE64 is not set");
-}
-if (!process.env.BUCKET_NAME) {
-    throw new Error("BUCKET_NAME is not set");
-}
-
-const serviceAccountBase64 = process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64;
-const serviceAccount = Buffer.from(serviceAccountBase64, 'base64');
-if (!serviceAccount) {
-    throw new Error("Failed to decode GOOGLE_APPLICATION_CREDENTIALS_BASE64");
-}
-
-const keyFilePath = path.join('/tmp', 'service-account-key.json');
-fs.writeFileSync(keyFilePath, serviceAccount);
-process.env.GOOGLE_APPLICATION_CREDENTIALS = keyFilePath;
-
-const bucketName = process.env.BUCKET_NAME;
 const storage = new Storage();
-const playCountsFile = 'playcounts.json';
-let audioFiles = [];
-let playCounts = {};
 
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
@@ -41,48 +25,9 @@ app.use(cors());
 
 const upload = multer({ dest: '/tmp/uploads/' });
 
-async function listFiles() {
-    try {
-        audioFiles = [];
-        const [files] = await storage.bucket(bucketName).getFiles();
-        files.forEach(file => {
-            if (file.name !== playCountsFile) {
-                audioFiles.push(file.name);
-                if (!playCounts[file.name]) {
-                    playCounts[file.name] = 0;
-                }
-            }
-        });
-    } catch (error) {
-        console.error('Error fetching files from bucket:', error);
-    }
-}
-
-async function loadPlayCounts() {
-    try {
-        const file = storage.bucket(bucketName).file(playCountsFile);
-        const [exists] = await file.exists();
-        if (exists) {
-            const [contents] = await file.download();
-            playCounts = JSON.parse(contents.toString());
-        } else {
-            playCounts = {};
-        }
-    } catch (error) {
-        console.error('Error loading play counts:', error);
-    }
-}
-
-async function savePlayCounts() {
-    try {
-        const file = storage.bucket(bucketName).file(playCountsFile);
-        await file.save(JSON.stringify(playCounts), {
-            contentType: 'application/json'
-        });
-    } catch (error) {
-        console.error('Error saving play counts:', error);
-    }
-}
+app.get('/streaming', (req, res) => {
+    res.render('streaming');
+});
 
 app.get('/audio/:filename', async (req, res) => {
     const { filename } = req.params;
@@ -111,10 +56,7 @@ app.get('/audio/:filename', async (req, res) => {
 
     res.writeHead(206, headers);
 
-    const readStream = file.createReadStream({
-        start,
-        end,
-    });
+    const readStream = file.createReadStream({ start, end });
 
     readStream.on('data', (chunk) => {
         console.log('Sending chunk of size:', chunk.length);
@@ -133,17 +75,13 @@ app.get('/audio/:filename', async (req, res) => {
 
 app.post('/play/:filename', async (req, res) => {
     const { filename } = req.params;
-    if (playCounts[filename] !== undefined) {
-        playCounts[filename] += 1;
-        await savePlayCounts();
-        res.sendStatus(200);
-    } else {
-        res.sendStatus(404);
-    }
+    const newCount = incrementPlayCount(filename);
+    await savePlayCounts();
+    res.json({ playCount: newCount });
 });
 
 app.get('/playcounts', (req, res) => {
-    res.json(playCounts);
+    res.json(getPlayCounts());
 });
 
 app.post('/upload', upload.single('file'), async (req, res) => {
@@ -164,8 +102,8 @@ app.post('/upload', upload.single('file'), async (req, res) => {
 
 app.get('/', async (req, res) => {
     await loadPlayCounts();
-    await listFiles();
-    res.render('index', { audioFiles, playCounts });
+    const audioFiles = await listFiles();
+    res.render('index', { audioFiles, playCounts: getPlayCounts() });
 });
 
 app.use((err, req, res, next) => {
@@ -173,8 +111,10 @@ app.use((err, req, res, next) => {
     res.status(500).send('Internal Server Error');
 });
 
+setupWebSocket(server);
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
 
