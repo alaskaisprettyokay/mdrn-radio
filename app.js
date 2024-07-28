@@ -6,7 +6,6 @@ const multer = require('multer');
 const cors = require('cors');
 const http = require('http');
 const { Storage } = require('@google-cloud/storage');
-
 const { listFiles, loadPlayCounts, savePlayCounts, getPlayCounts, incrementPlayCount } = require('./audio');
 const { bucketName } = require('./config');
 const setupWebSocket = require('./websocket');
@@ -24,10 +23,6 @@ app.use(bodyParser.json());
 app.use(cors());
 
 const upload = multer({ dest: '/tmp/uploads/' });
-
-app.get('/streaming', (req, res) => {
-    res.render('streaming');
-});
 
 app.get('/audio/:filename', async (req, res) => {
     const { filename } = req.params;
@@ -104,6 +99,10 @@ app.get('/', async (req, res) => {
     await loadPlayCounts();
     const audioFiles = await listFiles();
     res.render('index', { audioFiles, playCounts: getPlayCounts() });
+});
+
+app.get('/streaming', (req, res) => {
+    res.render('streaming');
 });
 
 app.use((err, req, res, next) => {
