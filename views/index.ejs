@@ -4,18 +4,201 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Audio Player</title>
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap">
+    <script src="https://cdn.jsdelivr.net/npm/web3/dist/web3.min.js"></script>
 </head>
 <body>
-    <h1>Audio Player</h1>
-    <ul>
-        <% audioFiles.forEach(file => { %>
-            <li>
-                <audio controls>
-                    <source src="<%= file %>" type="audio/mp3">
+    <canvas id="background-canvas"></canvas>
+    <header>
+        <h1>Audio Player</h1>
+        <button id="connect-wallet-btn">Connect Wallet</button>
+        <button id="upload-btn" style="display:none;">Upload New Song</button>
+    </header>
+    <main id="main-content" style="display:none;">
+        <div class="player-container">
+            <div class="now-playing">
+                <audio id="audio-player" controls>
+                    <source id="audio-source" src="" type="audio/mpeg">
                     Your browser does not support the audio element.
                 </audio>
-            </li>
-        <% }); %>
-    </ul>
+                <div class="now-playing-info">
+                    <h2 id="now-playing-title">Select a track</h2>
+                </div>
+                <canvas id="visualizer" width="800" height="200"></canvas>
+            </div>
+            <ul class="audio-list">
+                <% audioFiles.forEach(file => { %>
+                    <li class="audio-item" data-src="/audio/<%= file %>" data-title="<%= file %>">
+                        <span class="audio-title"><%= file %></span>
+                        <span class="play-count">Plays: <%= playCounts[file] || 0 %></span>
+                    </li>
+                <% }); %>
+            </ul>
+        </div>
+    </main>
+
+    <!-- Modal for Upload Form -->
+    <div id="upload-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <form id="upload-form" enctype="multipart/form-data">
+                <input type="file" name="file" accept="audio/*" required>
+                <button type="submit">Upload</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const audioItems = document.querySelectorAll('.audio-item');
+            const audioPlayer = document.getElementById('audio-player');
+            const audioSource = document.getElementById('audio-source');
+            const nowPlayingTitle = document.getElementById('now-playing-title');
+            const visualizerCanvas = document.getElementById('visualizer');
+            const visualizerCtx = visualizerCanvas.getContext('2d');
+            const backgroundCanvas = document.getElementById('background-canvas');
+            const backgroundCtx = backgroundCanvas.getContext('2d');
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const analyser = audioCtx.createAnalyser();
+            const source = audioCtx.createMediaElementSource(audioPlayer);
+            source.connect(analyser);
+            analyser.connect(audioCtx.destination);
+            analyser.fftSize = 256;
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+
+            // Modal elements
+            const uploadBtn = document.getElementById('upload-btn');
+            const modal = document.getElementById('upload-modal');
+            const closeModal = document.querySelector('.close');
+            const uploadForm = document.getElementById('upload-form');
+            const connectWalletBtn = document.getElementById('connect-wallet-btn');
+            const mainContent = document.getElementById('main-content');
+
+            // Open modal
+            uploadBtn.addEventListener('click', () => {
+                modal.style.display = 'block';
+            });
+
+            // Close modal
+            closeModal.addEventListener('click', () => {
+                modal.style.display = 'none';
+            });
+
+            // Close modal when clicking outside of it
+            window.addEventListener('click', (event) => {
+                if (event.target === modal) {
+                    modal.style.display = 'none';
+                }
+            });
+
+            // Handle file upload via AJAX
+            uploadForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const formData = new FormData(uploadForm);
+                try {
+                    const response = await fetch('/upload', {
+                        method: 'POST',
+                        body: formData,
+                    });
+                    if (response.ok) {
+                        alert('File uploaded successfully.');
+                        modal.style.display = 'none';
+                    } else {
+                        alert('File upload failed.');
+                    }
+                } catch (error) {
+                    console.error('Error uploading file:', error);
+                    alert('Error uploading file.');
+                }
+            });
+
+            // Resize background canvas to fill the screen
+            function resizeCanvas() {
+                backgroundCanvas.width = window.innerWidth;
+                backgroundCanvas.height = window.innerHeight;
+            }
+
+            window.addEventListener('resize', resizeCanvas);
+            resizeCanvas();
+
+            function draw() {
+                requestAnimationFrame(draw);
+                analyser.getByteFrequencyData(dataArray);
+
+                // Clear the visualizer canvas
+                visualizerCtx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+                visualizerCtx.fillRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+
+                // Draw the visualizer bars
+                const barWidth = (visualizerCanvas.width / bufferLength) * 2.5;
+                let barHeight;
+                let x = 0;
+                for (let i = 0; i < bufferLength; i++) {
+                    barHeight = dataArray[i];
+                    visualizerCtx.fillStyle = `rgb(${barHeight + 100}, 20, 120)`;
+                    visualizerCtx.fillRect(x, visualizerCanvas.height - barHeight / 2, barWidth, barHeight / 2);
+                    x += barWidth + 1;
+                }
+
+                // Clear the background canvas
+                backgroundCtx.clearRect(0, 0, backgroundCanvas.width, backgroundCanvas.height);
+
+                // Draw audio-responsive elements on the background canvas
+                const bgBarWidth = backgroundCanvas.width / bufferLength;
+                for (let i = 0; i < bufferLength; i++) {
+                    barHeight = dataArray[i];
+                    backgroundCtx.fillStyle = `rgba(${barHeight + 50}, ${100 - barHeight}, ${barHeight + 150}, 0.3)`;
+                    backgroundCtx.fillRect(i * bgBarWidth, backgroundCanvas.height - barHeight, bgBarWidth, barHeight);
+                }
+            }
+
+            // Handle wallet connection
+            connectWalletBtn.addEventListener('click', async () => {
+                if (typeof window.ethereum !== 'undefined') {
+                    try {
+                        const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
+                        if (accounts.length > 0) {
+                            mainContent.style.display = 'block';
+                            uploadBtn.style.display = 'inline-block';
+                            connectWalletBtn.style.display = 'none';
+                            console.log('Wallet connected:', accounts[0]);
+                        } else {
+                            alert('No accounts found.');
+                        }
+                    } catch (error) {
+                        console.error('Error connecting wallet:', error);
+                        alert('Error connecting wallet.');
+                    }
+                } else {
+                    alert('MetaMask is not installed. Please install it to use this app.');
+                }
+            });
+
+            audioItems.forEach(item => {
+                item.addEventListener('click', function() {
+                    audioSource.src = item.getAttribute('data-src');
+                    nowPlayingTitle.textContent = item.getAttribute('data-title');
+                    audioPlayer.load();
+                    audioPlayer.play();
+                    if (audioCtx.state === 'suspended') {
+                        audioCtx.resume();
+                    }
+                    draw();
+
+                    // Increment play count
+                    fetch(`/play/${item.getAttribute('data-title')}`, {
+                        method: 'POST'
+                    }).then(() => {
+                        // Update the play count on the page
+                        const playCountElement = item.querySelector('.play-count');
+                        const currentCount = parseInt(playCountElement.textContent.split(': ')[1]);
+                        playCountElement.textContent = `Plays: ${currentCount + 1}`;
+                    });
+                });
+            });
+        });
+    </script>
 </body>
 </html>
