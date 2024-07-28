@@ -6,6 +6,7 @@ const multer = require('multer');
 const fs = require('fs');
 const { Storage } = require('@google-cloud/storage');
 const axios = require('axios');
+const cors = require('cors');
 
 const app = express();
 
@@ -13,7 +14,12 @@ if (!process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
     throw new Error("GOOGLE_APPLICATION_CREDENTIALS_BASE64 is not set");
 }
 
-const serviceAccount = Buffer.from(process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64, 'base64');
+const serviceAccountBase64 = process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64;
+const serviceAccount = Buffer.from(serviceAccountBase64, 'base64');
+if (!serviceAccount) {
+    throw new Error("Failed to decode GOOGLE_APPLICATION_CREDENTIALS_BASE64");
+}
+
 const keyFilePath = path.join('/tmp', 'service-account-key.json');
 fs.writeFileSync(keyFilePath, serviceAccount);
 process.env.GOOGLE_APPLICATION_CREDENTIALS = keyFilePath;
@@ -29,6 +35,7 @@ app.set('views', path.join(__dirname, 'views'));
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.json());
+app.use(cors());
 
 const upload = multer({ dest: '/tmp/uploads/' });
 
@@ -78,21 +85,24 @@ async function savePlayCounts() {
 app.get('/audio/:filename', async (req, res) => {
     const { filename } = req.params;
     const fileUrl = `https://storage.googleapis.com/${bucketName}/${filename}`;
-    const fileExt = path.extname(filename).toLowerCase();
-    const mimeTypes = {
-        '.mp3': 'audio/mpeg',
-        '.wav': 'audio/wav',
-        '.flac': 'audio/flac',
-    };
 
     try {
+        const headers = {};
+        if (req.headers.range) {
+            headers.Range = req.headers.range;
+        }
+
         const response = await axios({
             url: fileUrl,
             method: 'GET',
+            headers: headers,
             responseType: 'stream'
         });
 
-        res.setHeader('Content-Type', mimeTypes[fileExt] || 'application/octet-stream');
+        res.setHeader('Content-Type', 'audio/mpeg');
+        if (req.headers.range) {
+            res.setHeader('Content-Range', response.headers['content-range']);
+        }
         response.data.pipe(res);
     } catch (error) {
         console.error('Error fetching audio file:', error);
@@ -137,8 +147,14 @@ app.get('/', async (req, res) => {
     res.render('index', { audioFiles, playCounts });
 });
 
-app.listen(3000, () => {
-    console.log('Server is running on port 3000');
+app.use((err, req, res, next) => {
+    console.error('Server Error:', err);
+    res.status(500).send('Internal Server Error');
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
 });
 
 module.exports = app;
