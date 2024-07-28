@@ -10,7 +10,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Decode the base64-encoded service account key
-const serviceAccount = Buffer.from(process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64, 'base64');
+const serviceAccount = Buffer.from(process.env.GOOGLE_APPLICATION_CREDENTIALS, 'base64');
 const keyFilePath = path.join(__dirname, 'service-account-key.json');
 fs.writeFileSync(keyFilePath, serviceAccount);
 
