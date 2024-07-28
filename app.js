@@ -1,4 +1,3 @@
-require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const bodyParser = require('body-parser');
@@ -10,16 +9,10 @@ const cors = require('cors');
 
 const app = express();
 
-if (!process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
-    throw new Error("GOOGLE_APPLICATION_CREDENTIALS_BASE64 is not set");
-}
+require('dotenv').config();
 
 const serviceAccountBase64 = process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64;
 const serviceAccount = Buffer.from(serviceAccountBase64, 'base64');
-if (!serviceAccount) {
-    throw new Error("Failed to decode GOOGLE_APPLICATION_CREDENTIALS_BASE64");
-}
-
 const keyFilePath = path.join('/tmp', 'service-account-key.json');
 fs.writeFileSync(keyFilePath, serviceAccount);
 process.env.GOOGLE_APPLICATION_CREDENTIALS = keyFilePath;
@@ -85,25 +78,39 @@ async function savePlayCounts() {
 app.get('/audio/:filename', async (req, res) => {
     const { filename } = req.params;
     const fileUrl = `https://storage.googleapis.com/${bucketName}/${filename}`;
+    const fileExt = path.extname(filename).toLowerCase();
+    const mimeTypes = {
+        '.mp3': 'audio/mpeg',
+        '.wav': 'audio/wav',
+        '.flac': 'audio/flac',
+    };
 
     try {
-        const headers = {};
-        if (req.headers.range) {
-            headers.Range = req.headers.range;
-        }
-
         const response = await axios({
             url: fileUrl,
             method: 'GET',
-            headers: headers,
             responseType: 'stream'
         });
 
-        res.setHeader('Content-Type', 'audio/mpeg');
-        if (req.headers.range) {
-            res.setHeader('Content-Range', response.headers['content-range']);
-        }
-        response.data.pipe(res);
+        res.setHeader('Content-Type', mimeTypes[fileExt] || 'application/octet-stream');
+        response.data.on('data', (chunk) => {
+            console.log('Sending chunk of size:', chunk.length);
+            if (chunk.length > 64 * 1024) {
+                let offset = 0;
+                while (offset < chunk.length) {
+                    const size = Math.min(64 * 1024, chunk.length - offset);
+                    res.write(chunk.slice(offset, offset + size));
+                    offset += size;
+                }
+            } else {
+                res.write(chunk);
+            }
+        });
+        
+        response.data.on('end', () => {
+            res.end();
+        });
+
     } catch (error) {
         console.error('Error fetching audio file:', error);
         res.status(500).send('Error fetching audio file');
