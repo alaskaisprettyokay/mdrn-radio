@@ -8,13 +8,13 @@ const axios = require('axios');
 
 const app = express();
 
-const serviceAccount = Buffer.from(process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64, 'base64');
+const serviceAccount = Buffer.from(process.env.GOOGLE_APPLICATION_CREDENTIALS, 'base64');
 const keyFilePath = path.join('/tmp', 'service-account-key.json');
 fs.writeFileSync(keyFilePath, serviceAccount);
 process.env.GOOGLE_APPLICATION_CREDENTIALS = keyFilePath;
 
 const storage = new Storage();
-const bucketName = 'your-bucket-name';
+const bucketName = 'mdrn-zuvillage-test';
 const playCountsFile = 'playcounts.json';
 let audioFiles = [];
 let playCounts = {};
