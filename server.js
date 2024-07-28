@@ -1,3 +1,4 @@
+const { Storage } = require('@google-cloud/storage');
 const express = require('express');
 const path = require('path');
 
@@ -10,7 +11,7 @@ app.set('views', path.join(__dirname, 'views'));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const audioFiles = [
-    'https://storage.cloud.google.com/mdrn-test-files/f2-ride-party.mp3'
+    'https://storage.googleapis.com/mdrn-zuvillage-test/Rustling-Demo.mp3'
     // Add more URLs of your audio files
 ];
 
