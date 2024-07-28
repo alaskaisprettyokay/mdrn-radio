@@ -17,6 +17,8 @@
     <main>
         <section id="broadcast-section">
             <h2>Broadcast Audio</h2>
+            <label for="broadcast-name">Broadcast Name:</label>
+            <input type="text" id="broadcast-name" required>
             <label for="audio-source">Select Audio Source:</label>
             <select id="audio-source">
                 <option value="microphone">Microphone</option>
@@ -28,8 +30,9 @@
         </section>
         <section id="listener-section">
             <h2>Listen to Broadcast</h2>
+            <ul id="broadcast-list"></ul>
             <audio id="listener-audio" controls></audio>
-            <button id="listen-btn">Listen to Broadcast</button>
+            <button id="listen-btn" style="display:none;">Listen to Broadcast</button>
         </section>
     </main>
 </body>

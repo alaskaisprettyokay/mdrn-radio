@@ -5,11 +5,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const stopBroadcastBtn = document.getElementById('stop-broadcast');
     const audioSourceSelect = document.getElementById('audio-source');
     const audioFileInput = document.getElementById('audio-file');
+    const broadcastNameInput = document.getElementById('broadcast-name');
     const listenerAudio = document.getElementById('listener-audio');
     const listenBtn = document.getElementById('listen-btn');
+    const broadcastList = document.getElementById('broadcast-list');
     let mediaRecorder;
     let broadcastStream;
     let audioContext, sourceNode;
+    let currentBroadcast;
 
     audioSourceSelect.addEventListener('change', () => {
         if (audioSourceSelect.value === 'file') {
@@ -20,9 +23,15 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     startBroadcastBtn.addEventListener('click', async () => {
+        const broadcastName = broadcastNameInput.value.trim();
+        if (!broadcastName) {
+            alert('Please enter a broadcast name.');
+            return;
+        }
+
         if (audioSourceSelect.value === 'microphone') {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            startBroadcast(stream);
+            startBroadcast(stream, broadcastName);
         } else if (audioSourceSelect.value === 'file') {
             const file = audioFileInput.files[0];
             if (file) {
@@ -32,20 +41,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 sourceNode = audioContext.createMediaElementSource(audio);
                 const destination = audioContext.createMediaStreamDestination();
                 sourceNode.connect(destination);
-                startBroadcast(destination.stream);
+                startBroadcast(destination.stream, broadcastName);
                 audio.play();
             }
         }
     });
 
-    function startBroadcast(stream) {
+    function startBroadcast(stream, broadcastName) {
         mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
         broadcastStream = stream;
+        currentBroadcast = broadcastName;
 
         mediaRecorder.ondataavailable = (event) => {
             if (event.data.size > 0) {
-                console.log('Broadcasting data: ', event.data.size);
-                socket.emit('audio-stream', event.data);
+                socket.emit('audio-stream', { name: broadcastName, data: event.data });
             }
         };
 
@@ -53,6 +62,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         startBroadcastBtn.style.display = 'none';
         stopBroadcastBtn.style.display = 'inline-block';
+        socket.emit('new-broadcast', broadcastName);
     }
 
     stopBroadcastBtn.addEventListener('click', () => {
@@ -67,15 +77,32 @@ document.addEventListener('DOMContentLoaded', function() {
 
         startBroadcastBtn.style.display = 'inline-block';
         stopBroadcastBtn.style.display = 'none';
+        socket.emit('end-broadcast', currentBroadcast);
+        currentBroadcast = null;
     });
 
-    const audioContextListener = new (window.AudioContext || window.webkitAudioContext)();
-    const sourceNodeListener = audioContextListener.createMediaElementSource(listenerAudio);
-    sourceNodeListener.connect(audioContextListener.destination);
+    socket.on('broadcast-list', (broadcasts) => {
+        broadcastList.innerHTML = '';
+        broadcasts.forEach(broadcast => {
+            const li = document.createElement('li');
+            li.textContent = broadcast;
+            li.addEventListener('click', () => {
+                listenBtn.style.display = 'inline-block';
+                listenBtn.dataset.broadcast = broadcast;
+            });
+            broadcastList.appendChild(li);
+        });
+    });
+
+    listenBtn.addEventListener('click', () => {
+        const broadcastName = listenBtn.dataset.broadcast;
+        if (broadcastName) {
+            socket.emit('join-broadcast', broadcastName);
+        }
+    });
 
     socket.on('audio-stream', (data) => {
         const audioBlob = new Blob([data], { type: 'audio/webm' });
-        console.log('Received audio data: ', audioBlob.size);
         const audioUrl = URL.createObjectURL(audioBlob);
         listenerAudio.src = audioUrl;
         listenerAudio.play().catch(error => {
@@ -83,15 +110,13 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    listenBtn.addEventListener('click', () => {
-        listenerAudio.play().catch(error => {
-            console.error('Error playing audio:', error);
-        });
-    });
-
-    listenerAudio.addEventListener('play', () => {
-        if (audioContextListener.state === 'suspended') {
-            audioContextListener.resume();
+    socket.on('broadcast-ended', (broadcastName) => {
+        if (listenBtn.dataset.broadcast === broadcastName) {
+            listenBtn.style.display = 'none';
+            listenerAudio.pause();
+            listenerAudio.src = '';
+            alert(`Broadcast "${broadcastName}" has ended.`);
         }
     });
-});
+
+    socket.emit('get-broadcast-list');
