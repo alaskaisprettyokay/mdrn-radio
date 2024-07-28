@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const audioSourceSelect = document.getElementById('audio-source');
     const audioFileInput = document.getElementById('audio-file');
     const listenerAudio = document.getElementById('listener-audio');
+    const listenBtn = document.getElementById('listen-btn');
     let mediaRecorder;
     let broadcastStream;
     let audioContext, sourceNode;
@@ -39,11 +40,12 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     function startBroadcast(stream) {
-        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
         broadcastStream = stream;
 
         mediaRecorder.ondataavailable = (event) => {
             if (event.data.size > 0) {
+                console.log('Broadcasting data: ', event.data.size);
                 socket.emit('audio-stream', event.data);
             }
         };
@@ -73,8 +75,20 @@ document.addEventListener('DOMContentLoaded', function() {
 
     socket.on('audio-stream', (data) => {
         const audioBlob = new Blob([data], { type: 'audio/webm' });
+        console.log('Received audio data: ', audioBlob.size);
         const audioUrl = URL.createObjectURL(audioBlob);
         listenerAudio.src = audioUrl;
-        listenerAudio.play();
+    });
+
+    listenBtn.addEventListener('click', () => {
+        listenerAudio.play().catch(error => {
+            console.error('Error playing audio:', error);
+        });
+    });
+
+    listenerAudio.addEventListener('play', () => {
+        if (audioContextListener.state === 'suspended') {
+            audioContextListener.resume();
+        }
     });
 });

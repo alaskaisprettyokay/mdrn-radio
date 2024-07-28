@@ -7,6 +7,7 @@ module.exports = function (server) {
         console.log('New client connected');
 
         socket.on('audio-stream', (data) => {
+            console.log('Received audio stream data on server'); // Log received data on server
             socket.broadcast.emit('audio-stream', data);
         });
 
