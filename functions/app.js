@@ -1,49 +1,40 @@
-// functions/app.js
-const { Storage } = require('@google-cloud/storage');
 const express = require('express');
 const serverless = require('serverless-http');
-const axios = require('axios');
 const path = require('path');
 const bodyParser = require('body-parser');
 const multer = require('multer');
 const fs = require('fs');
+const { Storage } = require('@google-cloud/storage');
+const axios = require('axios');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
-// Decode the base64-encoded service account key
-const serviceAccount = Buffer.from(process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64, 'base64');
+const serviceAccount = Buffer.from(process.env.GOOGLE_APPLICATION_CREDENTIALS, 'base64');
 const keyFilePath = path.join(__dirname, 'service-account-key.json');
 fs.writeFileSync(keyFilePath, serviceAccount);
-
-// Set the path to the service account key file
 process.env.GOOGLE_APPLICATION_CREDENTIALS = keyFilePath;
 
-// Create a client
 const storage = new Storage();
-
-const bucketName = 'mdrn-zuvillage-test'; // Replace with your actual bucket name
+const bucketName = 'mdrn-zuvillage-test'; 
 const playCountsFile = 'playcounts.json';
 let audioFiles = [];
 let playCounts = {};
 
-// Middleware to parse JSON bodies
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, '..', 'views'));
+
+app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use(bodyParser.json());
 
-// Set up Multer for file uploads
 const upload = multer({ dest: 'uploads/' });
 
-// Fetch list of files in the bucket
 async function listFiles() {
     try {
-        // Reset the audioFiles array
         audioFiles = [];
-        
         const [files] = await storage.bucket(bucketName).getFiles();
         files.forEach(file => {
             if (file.name !== playCountsFile) {
                 audioFiles.push(file.name);
-                // Initialize play count if not already set
                 if (!playCounts[file.name]) {
                     playCounts[file.name] = 0;
                 }
@@ -54,7 +45,6 @@ async function listFiles() {
     }
 }
 
-// Load play counts from the JSON file in the bucket
 async function loadPlayCounts() {
     try {
         const file = storage.bucket(bucketName).file(playCountsFile);
@@ -70,7 +60,6 @@ async function loadPlayCounts() {
     }
 }
 
-// Save play counts to the JSON file in the bucket
 async function savePlayCounts() {
     try {
         const file = storage.bucket(bucketName).file(playCountsFile);
@@ -82,7 +71,6 @@ async function savePlayCounts() {
     }
 }
 
-// Proxy route to serve audio files
 app.get('/audio/:filename', async (req, res) => {
     const { filename } = req.params;
     const fileUrl = `https://storage.googleapis.com/${bucketName}/${filename}`;
@@ -108,24 +96,21 @@ app.get('/audio/:filename', async (req, res) => {
     }
 });
 
-// Endpoint to increment play count
 app.post('/play/:filename', async (req, res) => {
     const { filename } = req.params;
     if (playCounts[filename] !== undefined) {
         playCounts[filename] += 1;
-        await savePlayCounts();  // Save play counts to the bucket
+        await savePlayCounts();
         res.sendStatus(200);
     } else {
         res.sendStatus(404);
     }
 });
 
-// Endpoint to get play counts
 app.get('/playcounts', (req, res) => {
     res.json(playCounts);
 });
 
-// Upload endpoint
 app.post('/upload', upload.single('file'), async (req, res) => {
     const filePath = req.file.path;
     const fileName = req.file.originalname;
@@ -140,6 +125,12 @@ app.post('/upload', upload.single('file'), async (req, res) => {
         console.error('Error uploading file:', error);
         res.status(500).send('Error uploading file.');
     }
+});
+
+app.get('/', async (req, res) => {
+    await loadPlayCounts();
+    await listFiles();
+    res.render('index', { audioFiles, playCounts });
 });
 
 module.exports.handler = serverless(app);
