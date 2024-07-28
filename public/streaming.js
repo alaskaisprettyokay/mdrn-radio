@@ -133,5 +133,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // Request the broadcast list when the client connects
     socket.emit('get-broadcast-list');
 });
