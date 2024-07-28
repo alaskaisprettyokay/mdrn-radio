@@ -26,21 +26,20 @@ document.addEventListener('DOMContentLoaded', function() {
         } else if (audioSourceSelect.value === 'file') {
             const file = audioFileInput.files[0];
             if (file) {
-                const fileStream = await file.arrayBuffer();
+                const fileURL = URL.createObjectURL(file);
+                const audio = new Audio(fileURL);
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                const audioBuffer = await audioContext.decodeAudioData(fileStream);
-                sourceNode = audioContext.createBufferSource();
-                sourceNode.buffer = audioBuffer;
+                sourceNode = audioContext.createMediaElementSource(audio);
                 const destination = audioContext.createMediaStreamDestination();
                 sourceNode.connect(destination);
                 startBroadcast(destination.stream);
-                sourceNode.start();
+                audio.play();
             }
         }
     });
 
     function startBroadcast(stream) {
-        mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
         broadcastStream = stream;
 
         mediaRecorder.ondataavailable = (event) => {
@@ -62,7 +61,8 @@ document.addEventListener('DOMContentLoaded', function() {
             broadcastStream.getTracks().forEach(track => track.stop());
         }
         if (sourceNode) {
-            sourceNode.stop();
+            sourceNode.mediaElement.pause();
+            sourceNode.disconnect();
         }
 
         startBroadcastBtn.style.display = 'inline-block';
