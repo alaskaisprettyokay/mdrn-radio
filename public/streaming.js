@@ -78,6 +78,9 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('Received audio data: ', audioBlob.size);
         const audioUrl = URL.createObjectURL(audioBlob);
         listenerAudio.src = audioUrl;
+        listenerAudio.play().catch(error => {
+            console.error('Error playing audio:', error);
+        });
     });
 
     listenBtn.addEventListener('click', () => {
