@@ -84,14 +84,37 @@ async function savePlayCounts() {
     }
 }
 
-app.get('/audio/:filename', (req, res) => {
+app.get('/audio/:filename', async (req, res) => {
     const { filename } = req.params;
     const file = storage.bucket(bucketName).file(filename);
-    
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Transfer-Encoding', 'chunked');
-    
-    const readStream = file.createReadStream();
+
+    const [metadata] = await file.getMetadata();
+    const fileSize = metadata.size;
+
+    const range = req.headers.range;
+    if (!range) {
+        res.status(416).send('Range not found');
+        return;
+    }
+
+    const CHUNK_SIZE = 10 ** 6; // 1MB
+    const start = Number(range.replace(/\D/g, ''));
+    const end = Math.min(start + CHUNK_SIZE, fileSize - 1);
+
+    const contentLength = end - start + 1;
+    const headers = {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': contentLength,
+        'Content-Type': 'audio/mpeg',
+    };
+
+    res.writeHead(206, headers);
+
+    const readStream = file.createReadStream({
+        start,
+        end,
+    });
 
     readStream.on('data', (chunk) => {
         console.log('Sending chunk of size:', chunk.length);
