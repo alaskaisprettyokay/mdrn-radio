@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const bodyParser = require('body-parser');
@@ -5,11 +6,14 @@ const multer = require('multer');
 const fs = require('fs');
 const { Storage } = require('@google-cloud/storage');
 const axios = require('axios');
-const cors = require('cors');
 
 const app = express();
 
-const serviceAccount = Buffer.from(process.env.GOOGLE_APPLICATION_CREDENTIALS, 'base64');
+if (!process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
+    throw new Error("GOOGLE_APPLICATION_CREDENTIALS_BASE64 is not set");
+}
+
+const serviceAccount = Buffer.from(process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64, 'base64');
 const keyFilePath = path.join('/tmp', 'service-account-key.json');
 fs.writeFileSync(keyFilePath, serviceAccount);
 process.env.GOOGLE_APPLICATION_CREDENTIALS = keyFilePath;
@@ -25,7 +29,6 @@ app.set('views', path.join(__dirname, 'views'));
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.json());
-app.use(cors());
 
 const upload = multer({ dest: '/tmp/uploads/' });
 
