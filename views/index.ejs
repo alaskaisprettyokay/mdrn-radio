@@ -26,6 +26,10 @@
                     <h2 id="now-playing-title">Select a track</h2>
                 </div>
                 <canvas id="visualizer" width="800" height="200"></canvas>
+                <div class="tempo-control">
+                    <label for="tempo-slider">Playback Speed: <span id="tempo-value">1.0x</span></label>
+                    <input type="range" id="tempo-slider" min="0.5" max="2" value="1" step="0.1">
+                </div>
             </div>
             <ul class="audio-list">
                 <% audioFiles.forEach(file => { %>
@@ -75,6 +79,8 @@
             const uploadForm = document.getElementById('upload-form');
             const connectWalletBtn = document.getElementById('connect-wallet-btn');
             const mainContent = document.getElementById('main-content');
+            const tempoSlider = document.getElementById('tempo-slider');
+            const tempoValue = document.getElementById('tempo-value');
 
             // Open modal
             uploadBtn.addEventListener('click', () => {
@@ -197,6 +203,12 @@
                         playCountElement.textContent = `Plays: ${currentCount + 1}`;
                     });
                 });
+            });
+
+            // Handle tempo slider
+            tempoSlider.addEventListener('input', function() {
+                audioPlayer.playbackRate = this.value;
+                tempoValue.innerText = `${this.value}x`;
             });
         });
     </script>

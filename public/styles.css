@@ -198,3 +198,16 @@ main {
     text-decoration: none;
     cursor: pointer;
 }
+
+.tempo-control {
+    margin-top: 20px;
+}
+
+.tempo-control label {
+    display: block;
+    margin-bottom: 10px;
+}
+
+#tempoSlider {
+    width: 100%;
+}
