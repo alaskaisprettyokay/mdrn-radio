@@ -5,6 +5,7 @@ const multer = require('multer');
 const fs = require('fs');
 const { Storage } = require('@google-cloud/storage');
 const axios = require('axios');
+const cors = require('cors');
 
 const app = express();
 
@@ -24,6 +25,7 @@ app.set('views', path.join(__dirname, 'views'));
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.json());
+app.use(cors());
 
 const upload = multer({ dest: '/tmp/uploads/' });
 
