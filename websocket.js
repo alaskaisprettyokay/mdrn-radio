@@ -22,7 +22,9 @@ module.exports = function (server) {
         });
 
         socket.on('audio-stream', ({ name, data }) => {
-            socket.broadcast.emit('audio-stream', data);
+            if (broadcasts[name]) {
+                io.to(broadcasts[name]).emit('audio-stream', data);
+            }
         });
 
         socket.on('join-broadcast', (broadcastName) => {

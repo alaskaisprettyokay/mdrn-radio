@@ -1,6 +1,5 @@
 document.addEventListener('DOMContentLoaded', function() {
-    const socket = io();
-
+    const socket = new WebSocket('ws://localhost:3000');
     const startBroadcastBtn = document.getElementById('start-broadcast');
     const stopBroadcastBtn = document.getElementById('stop-broadcast');
     const audioSourceSelect = document.getElementById('audio-source');
@@ -9,12 +8,18 @@ document.addEventListener('DOMContentLoaded', function() {
     const listenerAudio = document.getElementById('listener-audio');
     const listenBtn = document.getElementById('listen-btn');
     const broadcastList = document.getElementById('broadcast-list');
-    let mediaRecorder;
+    let peerConnection;
     let broadcastStream;
     let audioContext, sourceNode;
     let currentBroadcast;
-    let audioQueue = [];
-    let isListening = false; // Flag to control playback
+
+    const configuration = {
+        iceServers: [
+            {
+                urls: 'stun:stun.l.google.com:19302'
+            }
+        ]
+    };
 
     audioSourceSelect.addEventListener('change', () => {
         if (audioSourceSelect.value === 'file') {
@@ -52,25 +57,34 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     function startBroadcast(stream, broadcastName) {
-        mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
         broadcastStream = stream;
         currentBroadcast = broadcastName;
 
-        mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) {
-                socket.emit('audio-stream', { name: broadcastName, data: event.data });
+        peerConnection = new RTCPeerConnection(configuration);
+        stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+
+        peerConnection.onicecandidate = event => {
+            if (event.candidate) {
+                socket.send(JSON.stringify({ type: 'candidate', candidate: event.candidate }));
             }
         };
 
-        mediaRecorder.start(100);
+        peerConnection.onnegotiationneeded = async () => {
+            try {
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                socket.send(JSON.stringify({ type: 'offer', sdp: peerConnection.localDescription }));
+            } catch (err) {
+                console.error('Error creating offer:', err);
+            }
+        };
 
         startBroadcastBtn.style.display = 'none';
         stopBroadcastBtn.style.display = 'inline-block';
-        socket.emit('new-broadcast', broadcastName);
     }
 
     stopBroadcastBtn.addEventListener('click', () => {
-        mediaRecorder.stop();
+        peerConnection.close();
         if (broadcastStream) {
             broadcastStream.getTracks().forEach(track => track.stop());
         }
@@ -81,61 +95,64 @@ document.addEventListener('DOMContentLoaded', function() {
 
         startBroadcastBtn.style.display = 'inline-block';
         stopBroadcastBtn.style.display = 'none';
-        socket.emit('end-broadcast', currentBroadcast);
+        socket.send(JSON.stringify({ type: 'end', name: currentBroadcast }));
         currentBroadcast = null;
     });
 
-    socket.on('broadcast-list', (broadcasts) => {
-        broadcastList.innerHTML = '';
-        broadcasts.forEach(broadcast => {
-            const li = document.createElement('li');
-            li.textContent = broadcast;
-            li.addEventListener('click', () => {
-                listenBtn.style.display = 'inline-block';
-                listenBtn.dataset.broadcast = broadcast;
+    socket.onmessage = async event => {
+        const message = JSON.parse(event.data);
+        if (message.type === 'offer') {
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(message.sdp));
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            socket.send(JSON.stringify({ type: 'answer', sdp: peerConnection.localDescription }));
+        } else if (message.type === 'answer') {
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(message.sdp));
+        } else if (message.type === 'candidate') {
+            await peerConnection.addIceCandidate(new RTCIceCandidate(message.candidate));
+        } else if (message.type === 'broadcast-list') {
+            broadcastList.innerHTML = '';
+            message.broadcasts.forEach(broadcast => {
+                const li = document.createElement('li');
+                li.textContent = broadcast;
+                li.addEventListener('click', () => {
+                    listenBtn.style.display = 'inline-block';
+                    listenBtn.dataset.broadcast = broadcast;
+                });
+                broadcastList.appendChild(li);
             });
-            broadcastList.appendChild(li);
-        });
-    });
+        } else if (message.type === 'end') {
+            if (listenBtn.dataset.broadcast === message.name) {
+                listenBtn.style.display = 'none';
+                listenerAudio.pause();
+                listenerAudio.src = '';
+                alert(`Broadcast "${message.name}" has ended.`);
+            }
+        }
+    };
 
     listenBtn.addEventListener('click', () => {
         const broadcastName = listenBtn.dataset.broadcast;
         if (broadcastName) {
-            socket.emit('join-broadcast', broadcastName);
-            isListening = true; // Set the flag to true when listening starts
-        }
-    });
+            peerConnection = new RTCPeerConnection(configuration);
 
-    socket.on('audio-stream', (data) => {
-        const audioBlob = new Blob([data], { type: 'audio/webm' });
-        audioQueue.push(audioBlob);
-        playNextInQueue();
-    });
+            peerConnection.onicecandidate = event => {
+                if (event.candidate) {
+                    socket.send(JSON.stringify({ type: 'candidate', candidate: event.candidate }));
+                }
+            };
 
-    function playNextInQueue() {
-        if (isListening && listenerAudio.paused && audioQueue.length > 0) {
-            const audioBlob = audioQueue.shift();
-            const audioUrl = URL.createObjectURL(audioBlob);
-            listenerAudio.src = audioUrl;
-            listenerAudio.play().catch(error => {
-                console.error('Error playing audio:', error);
-            });
-        }
-    }
+            peerConnection.ontrack = event => {
+                listenerAudio.srcObject = event.streams[0];
+                listenerAudio.play();
+            };
 
-    listenerAudio.addEventListener('ended', playNextInQueue);
-
-    socket.on('broadcast-ended', (broadcastName) => {
-        if (listenBtn.dataset.broadcast === broadcastName) {
-            listenBtn.style.display = 'none';
-            listenerAudio.pause();
-            listenerAudio.src = '';
-            audioQueue = [];
-            isListening = false; // Set the flag to false when the broadcast ends
-            alert(`Broadcast "${broadcastName}" has ended.`);
+            socket.send(JSON.stringify({ type: 'join', name: broadcastName }));
         }
     });
 
     // Request the broadcast list when the client connects
-    socket.emit('get-broadcast-list');
+    socket.onopen = () => {
+        socket.send(JSON.stringify({ type: 'get-broadcast-list' }));
+    };
 });

@@ -8,7 +8,7 @@ const http = require('http');
 const { Storage } = require('@google-cloud/storage');
 const { listFiles, loadPlayCounts, savePlayCounts, getPlayCounts, incrementPlayCount } = require('./audio');
 const { bucketName } = require('./config');
-const setupWebSocket = require('./websocket');
+const WebSocket = require('ws');
 
 const app = express();
 const server = http.createServer(app);
@@ -110,7 +110,74 @@ app.use((err, req, res, next) => {
     res.status(500).send('Internal Server Error');
 });
 
-setupWebSocket(server);
+// WebSocket setup
+const wss = new WebSocket.Server({ server });
+const broadcasts = {};
+
+wss.on('connection', socket => {
+    console.log('New client connected');
+
+    // Send the current broadcast list to the new client
+    socket.send(JSON.stringify({ type: 'broadcast-list', broadcasts: Object.keys(broadcasts) }));
+
+    socket.on('message', message => {
+        const data = JSON.parse(message);
+        switch (data.type) {
+            case 'new-broadcast':
+                broadcasts[data.name] = socket;
+                wss.clients.forEach(client => {
+                    if (client.readyState === WebSocket.OPEN) {
+                        client.send(JSON.stringify({ type: 'broadcast-list', broadcasts: Object.keys(broadcasts) }));
+                    }
+                });
+                break;
+            case 'end-broadcast':
+                delete broadcasts[data.name];
+                wss.clients.forEach(client => {
+                    if (client.readyState === WebSocket.OPEN) {
+                        client.send(JSON.stringify({ type: 'broadcast-list', broadcasts: Object.keys(broadcasts) }));
+                        client.send(JSON.stringify({ type: 'broadcast-ended', name: data.name }));
+                    }
+                });
+                break;
+            case 'audio-stream':
+                wss.clients.forEach(client => {
+                    if (client !== socket && client.readyState === WebSocket.OPEN) {
+                        client.send(JSON.stringify({ type: 'audio-stream', data: data.data }));
+                    }
+                });
+                break;
+            case 'join-broadcast':
+                // Implement join logic if necessary
+                break;
+            case 'candidate':
+                // Handle ICE candidates
+                break;
+            case 'offer':
+                // Handle SDP offer
+                break;
+            case 'answer':
+                // Handle SDP answer
+                break;
+        }
+    });
+
+    socket.on('close', () => {
+        console.log('Client disconnected');
+        for (const [name, client] of Object.entries(broadcasts)) {
+            if (client === socket) {
+                delete broadcasts[name];
+                wss.clients.forEach(client => {
+                    if (client.readyState === WebSocket.OPEN) {
+                        client.send(JSON.stringify({ type: 'broadcast-list', broadcasts: Object.keys(broadcasts) }));
+                        client.send(JSON.stringify({ type: 'broadcast-ended', name }));
+                    }
+                });
+                break;
+            }
+        }
+    });
+});
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
